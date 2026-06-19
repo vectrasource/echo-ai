@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ECHO — Neural Interface</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Space+Mono:wght@400;700&family=Noto+Sans+Malayalam:wght@400;600;700&display=swap');
+
+  :root {
+    --void: #05070a;
+    --void-2: #0a0e14;
+    --core-cyan: #00e5ff;
+    --core-cyan-dim: #00e5ff55;
+    --amber: #ffb627;
+    --amber-dim: #ffb62755;
+    --ghost: #e8f4f8;
+    --ghost-dim: #e8f4f880;
+    --danger: #ff3860;
+    --line: #1a2530;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--void);
+    overflow: hidden;
+    font-family: 'Space Mono', monospace;
+  }
+
+  #scene-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+
+  .grain {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .hud {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: clamp(16px, 3vw, 40px);
+  }
+
+  /* ---------- TOP BAR ---------- */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .wordmark {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: clamp(22px, 3.4vw, 34px);
+    letter-spacing: 0.18em;
+    color: var(--ghost);
+    text-shadow: 0 0 18px var(--core-cyan-dim);
+  }
+  .wordmark span { color: var(--core-cyan); }
+
+  .subtag {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    color: var(--ghost-dim);
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  .status-cluster {
+    text-align: right;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--core-cyan);
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--core-cyan);
+    box-shadow: 0 0 8px var(--core-cyan);
+    animation: blink 2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .clock {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    color: var(--ghost);
+    letter-spacing: 0.08em;
+  }
+
+  /* ---------- CENTER CAPTION ---------- */
+  .caption-zone {
+    position: absolute;
+    bottom: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(680px, 86vw);
+    text-align: center;
+    pointer-events: none;
+  }
+  .caption {
+    font-family: 'Noto Sans Malayalam', 'Space Mono', sans-serif;
+    font-size: clamp(17px, 2.4vw, 23px);
+    font-weight: 600;
+    color: var(--ghost);
+    line-height: 1.6;
+    text-shadow: 0 0 20px rgba(0,229,255,0.25);
+    min-height: 1.6em;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .caption.visible { opacity: 1; }
+  .caption.briefing-mode { color: var(--amber); text-shadow: 0 0 20px rgba(255,182,39,0.3); }
+
+  /* ---------- BOTTOM CONTROL ---------- */
+  .bottombar {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    pointer-events: auto;
+  }
+
+  .trigger-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .trigger {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 1px solid var(--core-cyan-dim);
+    background: rgba(0,229,255,0.05);
+    color: var(--core-cyan);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(6px);
+  }
+  .trigger:hover {
+    background: rgba(0,229,255,0.12);
+    box-shadow: 0 0 24px var(--core-cyan-dim);
+    transform: scale(1.05);
+  }
+  .trigger.listening {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(255,56,96,0.08);
+    box-shadow: 0 0 30px rgba(255,56,96,0.35);
+    animation: pulse-ring 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(255,56,96,0.4); }
+    70% { box-shadow: 0 0 0 18px rgba(255,56,96,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,56,96,0); }
+  }
+  .trigger svg { width: 24px; height: 24px; }
+
+  .trigger-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--ghost-dim);
+    text-transform: uppercase;
+  }
+
+  /* ---------- SIDE DATA RAILS (idle ambient) ---------- */
+  .rail {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--core-cyan-dim);
+    line-height: 2.1;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .rail.left { left: clamp(16px, 3vw, 40px); }
+  .rail.right { right: clamp(16px, 3vw, 40px); text-align: right; }
+  .rail .v { color: var(--ghost-dim); }
+
+  /* ---------- BRIEFING PANELS ---------- */
+  .panel-deck {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .panel {
+    position: absolute;
+    width: 230px;
+    padding: 18px 20px;
+    background: rgba(10,14,20,0.72);
+    border: 1px solid var(--amber-dim);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transform: scale(0.85) translateY(10px);
+    transition: opacity 0.5s cubic-bezier(.2,.8,.2,1), transform 0.5s cubic-bezier(.2,.8,.2,1);
+  }
+  .panel.show {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 16px; height: 16px;
+    border-top: 1px solid var(--amber);
+    border-left: 1px solid var(--amber);
+  }
+  .panel::after {
+    content: '';
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 16px; height: 16px;
+    border-bottom: 1px solid var(--amber);
+    border-right: 1px solid var(--amber);
+  }
+  .panel-label {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .panel-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ghost);
+  }
+  .panel-delta {
+    font-size: 11px;
+    color: #5dffb0;
+    margin-top: 4px;
+  }
+  .panel-delta.neg { color: var(--danger); }
+
+  #panel-1 { top: 16%; left: 8%; }
+  #panel-2 { top: 14%; right: 8%; }
+  #panel-3 { bottom: 30%; left: 6%; }
+  #panel-4 { bottom: 30%; right: 6%; }
+
+  @media (max-width: 760px) {
+    .panel { position: static; width: 84vw; margin: 6px auto; }
+    .panel-deck { flex-direction: column; gap: 10px; }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trigger.listening { animation: none; }
+    .status-dot { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene-canvas"></canvas>
+<div class="grain"></div>
+
+<div class="hud">
+  <div class="topbar">
+    <div>
+      <div class="wordmark">E<span>C</span>HO</div>
+      <div class="subtag">Neural Interface · v1.0</div>
+    </div>
+    <div class="status-cluster">
+      <div class="status-row"><span class="status-dot"></span> SYSTEM ONLINE</div>
+      <div class="clock" id="clock">00:00:00</div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="trigger-wrap">
+      <button class="trigger" id="triggerBtn" aria-label="Activate ECHO">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/>
+        </svg>
+      </button>
+      <div class="trigger-label" id="triggerLabel">TAP TO ACTIVATE</div>
+    </div>
+  </div>
+</div>
+
+<div class="rail left">
+  <div>CORE TEMP <span class="v" id="r1">36.6°</span></div>
+  <div>SYNC RATE <span class="v" id="r2">98.2%</span></div>
+  <div>UPLINK <span class="v" id="r3">STABLE</span></div>
+</div>
+<div class="rail right">
+  <div>NODE <span class="v">KL-IN-07</span></div>
+  <div>LANG <span class="v">ML-IN</span></div>
+  <div>LOC <span class="v">KOCHI</span></div>
+</div>
+
+<div class="caption-zone">
+  <div class="caption" id="caption"></div>
+</div>
+
+<div class="panel-deck" id="panelDeck">
+  <div class="panel" id="panel-1">
+    <div class="panel-label">Followers</div>
+    <div class="panel-value" id="pv1">12.4K</div>
+    <div class="panel-delta" id="pd1">▲ 8.2% ഈ ആഴ്ച</div>
+  </div>
+  <div class="panel" id="panel-2">
+    <div class="panel-label">Revenue (MTD)</div>
+    <div class="panel-value" id="pv2">₹2.8L</div>
+    <div class="panel-delta" id="pd2">▲ 14% MoM</div>
+  </div>
+  <div class="panel" id="panel-3">
+    <div class="panel-label">Active Users</div>
+    <div class="panel-value" id="pv3">1,920</div>
+    <div class="panel-delta" id="pd3">▲ 22%</div>
+  </div>
+  <div class="panel" id="panel-4">
+    <div class="panel-label">Content Reach</div>
+    <div class="panel-value" id="pv4">340K</div>
+    <div class="panel-delta" id="pd4">▲ 31% വളർച്ച</div>
+  </div>
+</div>
+
+<div class="sr-only" id="srStatus" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================
+   ECHO — Neural Interface
+   Three.js wireframe core + mic-reactive waveform + Malayalam
+   TTS briefing sequence via /api/speak (Google Cloud TTS proxy)
+   ============================================================ */
+
+// ---------- CONFIG: edit these for your own demo numbers ----------
+const FAKE_STATS = {
+  followers: { value: "12.4K", delta: "▲ 8.2% ഈ ആഴ്ച", neg: false },
+  revenue:   { value: "₹2.8L", delta: "▲ 14% MoM", neg: false },
+  users:     { value: "1,920", delta: "▲ 22%", neg: false },
+  reach:     { value: "340K",  delta: "▲ 31% വളർച്ച", neg: false },
+};
+
+// Spoken briefing line (Malayalam). Edit freely — this is what ECHO will say.
+// If you don't have a TTS endpoint wired yet, this still drives the on-screen caption.
+const GREETING_LINE = "നമസ്കാരം സർ. ECHO ഓൺലൈനാണ്. എങ്ങനെ സഹായിക്കാം?";
+const BRIEFING_LINE = "സർ, ഇതാണ് നിങ്ങളുടെ ബിസിനസ് സ്റ്റാറ്റസ്. ഫോളോവേഴ്സ് 12.4 K ആയി, ഈ ആഴ്ച 8.2% വളർച്ച. വരുമാനം ഈ മാസം 2.8 ലക്ഷം, കഴിഞ്ഞ മാസത്തെക്കാൾ 14% കൂടുതൽ. ആക്ടീവ് യൂസേഴ്സ് 1,920 ആയി ഉയർന്നു. കണ്ടന്റ് റീച്ച് 3.4 ലക്ഷം കടന്നു. എല്ലാം ഗ്രീൻ സോണിലാണ് സർ.";
+
+// ---------- THREE.JS SCENE ----------
+const canvas = document.getElementById('scene-canvas');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.z = 6;
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+// Core: icosahedron wireframe
+const coreGeo = new THREE.IcosahedronGeometry(1.6, 2);
+const coreMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.55 });
+const core = new THREE.Mesh(coreGeo, coreMat);
+scene.add(core);
+
+// Inner glow sphere
+const glowGeo = new THREE.IcosahedronGeometry(1.15, 1);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.25 });
+const glow = new THREE.Mesh(glowGeo, glowMat);
+scene.add(glow);
+
+// Outer ring (orbit ring)
+const ringGeo = new THREE.TorusGeometry(2.4, 0.012, 8, 100);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.35 });
+const ring1 = new THREE.Mesh(ringGeo, ringMat);
+ring1.rotation.x = Math.PI / 2.2;
+scene.add(ring1);
+
+const ring2 = new THREE.Mesh(ringGeo.clone(), ringMat.clone());
+ring2.rotation.x = Math.PI / 3.4;
+ring2.rotation.y = Math.PI / 5;
+ring2.scale.set(1.15, 1.15, 1.15);
+scene.add(ring2);
+
+// Particle field
+const particleCount = 400;
+const particleGeo = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+  const r = 4 + Math.random() * 4;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos((Math.random() * 2) - 1);
+  positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+  positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  positions[i*3+2] = r * Math.cos(phi);
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const particleMat = new THREE.PointsMaterial({ color: 0x00e5ff, size: 0.018, transparent: true, opacity: 0.4 });
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+let targetColor = new THREE.Color(0x00e5ff);
+let currentMode = 'idle'; // idle | listening | briefing
+
+function setCoreColor(hex) {
+  targetColor = new THREE.Color(hex);
+}
+
+let audioLevel = 0; // driven by mic analyser, 0-1
+let clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  core.rotation.y += 0.0022;
+  core.rotation.x += 0.0009;
+  glow.rotation.y -= 0.0016;
+  ring1.rotation.z += 0.0014;
+  ring2.rotation.z -= 0.001;
+  particles.rotation.y += 0.0004;
+
+  // Idle ambient pulse, or audio-reactive pulse when listening
+  let pulse;
+  if (currentMode === 'listening') {
+    pulse = 1 + audioLevel * 0.9;
+  } else {
+    pulse = 1 + Math.sin(t * 1.4) * 0.05;
+  }
+  core.scale.setScalar(pulse);
+  glow.scale.setScalar(pulse * 0.96);
+
+  // Color lerp toward target
+  coreMat.color.lerp(targetColor, 0.05);
+  glowMat.color.lerp(targetColor, 0.05);
+  ring1.material.color.lerp(targetColor, 0.05);
+  ring2.material.color.lerp(targetColor, 0.05);
+  particleMat.color.lerp(targetColor, 0.05);
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- CLOCK ----------
+function tickClock() {
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleTimeString('en-GB', { hour12: false });
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// Ambient rail number flicker (cosmetic, idle state only)
+setInterval(() => {
+  if (currentMode !== 'idle') return;
+  document.getElementById('r1').textContent = (36.2 + Math.random()*0.8).toFixed(1) + '°';
+  document.getElementById('r2').textContent = (96 + Math.random()*3.5).toFixed(1) + '%';
+}, 2200);
+
+// ---------- MIC / AUDIO ANALYSER ----------
+let audioCtx, analyser, micStream, dataArray;
+
+async function startMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    pollMic();
+    return true;
+  } catch (e) {
+    console.warn('Mic permission denied or unavailable:', e);
+    return false;
+  }
+}
+
+function pollMic() {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(dataArray);
+  const avg = dataArray.reduce((a,b) => a+b, 0) / dataArray.length;
+  audioLevel = Math.min(avg / 90, 1);
+  requestAnimationFrame(pollMic);
+}
+
+function stopMic() {
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  if (audioCtx) audioCtx.close();
+  analyser = null;
+  audioLevel = 0;
+}
+
+// ---------- CAPTION TYPEWRITER ----------
+function showCaption(text, mode = 'normal') {
+  const el = document.getElementById('caption');
+  el.classList.toggle('briefing-mode', mode === 'briefing');
+  el.textContent = text;
+  el.classList.add('visible');
+}
+function hideCaption() {
+  document.getElementById('caption').classList.remove('visible');
+}
+
+// ---------- TTS PLAYBACK ----------
+// Calls /api/speak (Google Cloud TTS proxy). Falls back to no audio
+// (caption-only) if the endpoint isn't deployed yet — so this still
+// works as a visual demo before you wire up the backend.
+async function speak(text) {
+  try {
+    const res = await fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error('TTS endpoint not ready');
+    const data = await res.json();
+    const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+    return new Promise((resolve) => {
+      audio.onended = resolve;
+      audio.onerror = resolve;
+      audio.play().catch(resolve);
+    });
+  } catch (e) {
+    // Visual-only fallback — caption still plays, just no voice.
+    // Roughly time the caption dwell to text length so demo still feels right.
+    const dwell = Math.min(Math.max(text.length * 55, 1800), 9000);
+    return new Promise((resolve) => setTimeout(resolve, dwell));
+  }
+}
+
+// ---------- BRIEFING PANEL REVEAL ----------
+function populatePanels() {
+  document.getElementById('pv1').textContent = FAKE_STATS.followers.value;
+  document.getElementById('pd1').textContent = FAKE_STATS.followers.delta;
+  document.getElementById('pv2').textContent = FAKE_STATS.revenue.value;
+  document.getElementById('pd2').textContent = FAKE_STATS.revenue.delta;
+  document.getElementById('pv3').textContent = FAKE_STATS.users.value;
+  document.getElementById('pd3').textContent = FAKE_STATS.users.delta;
+  document.getElementById('pv4').textContent = FAKE_STATS.reach.value;
+  document.getElementById('pd4').textContent = FAKE_STATS.reach.delta;
+}
+
+function showPanels() {
+  populatePanels();
+  ['panel-1','panel-2','panel-3','panel-4'].forEach((id, i) => {
+    setTimeout(() => document.getElementById(id).classList.add('show'), i * 160);
+  });
+}
+function hidePanels() {
+  ['panel-1','panel-2','panel-3','panel-4'].forEach(id => {
+    document.getElementById(id).classList.remove('show');
+  });
+}
+
+// ---------- MAIN INTERACTION FLOW ----------
+const triggerBtn = document.getElementById('triggerBtn');
+const triggerLabel = document.getElementById('triggerLabel');
+const srStatus = document.getElementById('srStatus');
+let busy = false;
+
+async function runSequence() {
+  if (busy) return;
+  busy = true;
+
+  // 1. Listening state
+  currentMode = 'listening';
+  triggerBtn.classList.add('listening');
+  triggerLabel.textContent = 'LISTENING...';
+  srStatus.textContent = 'ECHO is listening';
+  setCoreColor(0xff3860);
+  const micOk = await startMic();
+  showCaption('...');
+
+  await new Promise(r => setTimeout(r, micOk ? 1400 : 900));
+  stopMic();
+
+  // 2. Greeting
+  currentMode = 'briefing';
+  triggerBtn.classList.remove('listening');
+  triggerLabel.textContent = 'PROCESSING';
+  setCoreColor(0x00e5ff);
+  showCaption(GREETING_LINE);
+  srStatus.textContent = 'ECHO is responding';
+  await speak(GREETING_LINE);
+
+  // 3. Pivot to business briefing — amber, panels fly in
+  await new Promise(r => setTimeout(r, 400));
+  setCoreColor(0xffb627);
+  triggerLabel.textContent = 'BRIEFING';
+  showCaption(BRIEFING_LINE, 'briefing');
+  showPanels();
+  await speak(BRIEFING_LINE);
+
+  // 4. Hold briefing on screen, then reset
+  await new Promise(r => setTimeout(r, 2600));
+  hidePanels();
+  hideCaption();
+  await new Promise(r => setTimeout(r, 500));
+  setCoreColor(0x00e5ff);
+  currentMode = 'idle';
+  triggerLabel.textContent = 'TAP TO ACTIVATE';
+  srStatus.textContent = 'ECHO is idle';
+  busy = false;
+}
+
+triggerBtn.addEventListener('click', runSequence);
+
+// Optional: clap/loud-sound trigger via passive mic listener (separate from
+// the interaction mic above). Uncomment to enable clap detection on load.
+/*
+(async function enableClapDetect() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    const buf = new Uint8Array(an.frequencyBinCount);
+    let cooldown = false;
+    function loop() {
+      an.getByteFrequencyData(buf);
+      const peak = Math.max(...buf);
+      if (peak > 200 && !busy && !cooldown) {
+        cooldown = true;
+        runSequence();
+        setTimeout(() => cooldown = false, 4000);
+      }
+      requestAnimationFrame(loop);
+    }
+    loop();
+  } catch (e) { console.warn('Clap detect mic unavailable', e); }
+})();
+*/
+
+// Keyboard accessibility: Enter/Space already handled natively by <button>
+</script>
+
+</body>
+</html>
