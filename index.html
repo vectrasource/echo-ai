@@ -189,6 +189,97 @@
     text-transform: uppercase;
   }
 
+  /* ---------- MIC-ENABLE OVERLAY (one-time permission gate) ---------- */
+  .enable-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(5,7,10,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    text-align: center;
+    backdrop-filter: blur(4px);
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+  }
+  .enable-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .enable-overlay h2 {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--ghost);
+    font-size: 18px;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .enable-overlay p {
+    color: var(--ghost-dim);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    max-width: 320px;
+    line-height: 1.6;
+  }
+  .enable-btn {
+    margin-top: 6px;
+    padding: 14px 36px;
+    border: 1px solid var(--core-cyan);
+    background: rgba(0,229,255,0.08);
+    color: var(--core-cyan);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .enable-btn:hover {
+    background: rgba(0,229,255,0.16);
+    box-shadow: 0 0 24px var(--core-cyan-dim);
+  }
+
+  /* ---------- AMBIENT MODE INDICATOR (replaces old tap button) ---------- */
+  .mode-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+  }
+  .mode-dot {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 1px solid var(--core-cyan-dim);
+    background: rgba(0,229,255,0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--core-cyan);
+    transition: all 0.3s ease;
+  }
+  .mode-dot.listening {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(255,56,96,0.08);
+    box-shadow: 0 0 30px rgba(255,56,96,0.35);
+    animation: pulse-ring 1.2s ease-in-out infinite;
+  }
+  .mode-dot.thinking {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: rgba(255,182,39,0.08);
+    animation: think-spin 1.4s linear infinite;
+  }
+  @keyframes think-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .mode-dot svg { width: 22px; height: 22px; }
+
   /* ---------- SIDE DATA RAILS (idle ambient) ---------- */
   .rail {
     position: fixed;
@@ -308,16 +399,22 @@
   </div>
 
   <div class="bottombar">
-    <div class="trigger-wrap">
-      <button class="trigger" id="triggerBtn" aria-label="Activate ECHO">
+    <div class="mode-indicator">
+      <div class="mode-dot" id="modeDot">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
           <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z"/>
           <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/>
         </svg>
-      </button>
-      <div class="trigger-label" id="triggerLabel">TAP TO ACTIVATE</div>
+      </div>
+      <div class="trigger-label" id="triggerLabel">CLAP TO ACTIVATE</div>
     </div>
   </div>
+</div>
+
+<div class="enable-overlay" id="enableOverlay">
+  <h2>ECHO — MIC ACCESS REQUIRED</h2>
+  <p>ECHO listens for a clap to activate, then your question — fully hands-free. Allow microphone access to begin.</p>
+  <button class="enable-btn" id="enableBtn">ENABLE MICROPHONE</button>
 </div>
 
 <div class="rail left">
@@ -368,7 +465,8 @@
    TTS briefing sequence via /api/speak (Google Cloud TTS proxy)
    ============================================================ */
 
-// ---------- CONFIG: edit these for your own demo numbers ----------
+// ---------- CONFIG ----------
+// FAKE_STATS still used as fallback display values if needed elsewhere.
 const FAKE_STATS = {
   followers: { value: "12.4K", delta: "▲ 8.2% ഈ ആഴ്ച", neg: false },
   revenue:   { value: "₹2.8L", delta: "▲ 14% MoM", neg: false },
@@ -376,10 +474,7 @@ const FAKE_STATS = {
   reach:     { value: "340K",  delta: "▲ 31% വളർച്ച", neg: false },
 };
 
-// Spoken briefing line (Malayalam). Edit freely — this is what ECHO will say.
-// If you don't have a TTS endpoint wired yet, this still drives the on-screen caption.
-const GREETING_LINE = "നമസ്കാരം സർ. ECHO ഓൺലൈനാണ്. എങ്ങനെ സഹായിക്കാം?";
-const BRIEFING_LINE = "സർ, ഇതാണ് നിങ്ങളുടെ ബിസിനസ് സ്റ്റാറ്റസ്. ഫോളോവേഴ്സ് 12.4 K ആയി, ഈ ആഴ്ച 8.2% വളർച്ച. വരുമാനം ഈ മാസം 2.8 ലക്ഷം, കഴിഞ്ഞ മാസത്തെക്കാൾ 14% കൂടുതൽ. ആക്ടീവ് യൂസേഴ്സ് 1,920 ആയി ഉയർന്നു. കണ്ടന്റ് റീച്ച് 3.4 ലക്ഷം കടന്നു. എല്ലാം ഗ്രീൻ സോണിലാണ് സർ.";
+const GREETING_LINE = "നമസ്കാരം സർ. ECHO ഒണ്‍ലൈനാണ്. എന്ത് അറിയണം സർ?";
 
 // ---------- THREE.JS SCENE ----------
 const canvas = document.getElementById('scene-canvas');
@@ -391,19 +486,16 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-// Core: icosahedron wireframe
 const coreGeo = new THREE.IcosahedronGeometry(1.6, 2);
 const coreMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.55 });
 const core = new THREE.Mesh(coreGeo, coreMat);
 scene.add(core);
 
-// Inner glow sphere
 const glowGeo = new THREE.IcosahedronGeometry(1.15, 1);
 const glowMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.25 });
 const glow = new THREE.Mesh(glowGeo, glowMat);
 scene.add(glow);
 
-// Outer ring (orbit ring)
 const ringGeo = new THREE.TorusGeometry(2.4, 0.012, 8, 100);
 const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.35 });
 const ring1 = new THREE.Mesh(ringGeo, ringMat);
@@ -416,7 +508,6 @@ ring2.rotation.y = Math.PI / 5;
 ring2.scale.set(1.15, 1.15, 1.15);
 scene.add(ring2);
 
-// Particle field
 const particleCount = 400;
 const particleGeo = new THREE.BufferGeometry();
 const positions = new Float32Array(particleCount * 3);
@@ -434,13 +525,13 @@ const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
 let targetColor = new THREE.Color(0x00e5ff);
-let currentMode = 'idle'; // idle | listening | briefing
+let currentMode = 'idle'; // idle | listening | thinking | speaking
 
 function setCoreColor(hex) {
   targetColor = new THREE.Color(hex);
 }
 
-let audioLevel = 0; // driven by mic analyser, 0-1
+let audioLevel = 0;
 let clock = new THREE.Clock();
 
 function animate() {
@@ -454,17 +545,17 @@ function animate() {
   ring2.rotation.z -= 0.001;
   particles.rotation.y += 0.0004;
 
-  // Idle ambient pulse, or audio-reactive pulse when listening
   let pulse;
   if (currentMode === 'listening') {
     pulse = 1 + audioLevel * 0.9;
+  } else if (currentMode === 'thinking') {
+    pulse = 1 + Math.sin(t * 4) * 0.07;
   } else {
     pulse = 1 + Math.sin(t * 1.4) * 0.05;
   }
   core.scale.setScalar(pulse);
   glow.scale.setScalar(pulse * 0.96);
 
-  // Color lerp toward target
   coreMat.color.lerp(targetColor, 0.05);
   glowMat.color.lerp(targetColor, 0.05);
   ring1.material.color.lerp(targetColor, 0.05);
@@ -489,49 +580,13 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 1000);
 
-// Ambient rail number flicker (cosmetic, idle state only)
 setInterval(() => {
   if (currentMode !== 'idle') return;
   document.getElementById('r1').textContent = (36.2 + Math.random()*0.8).toFixed(1) + '°';
   document.getElementById('r2').textContent = (96 + Math.random()*3.5).toFixed(1) + '%';
 }, 2200);
 
-// ---------- MIC / AUDIO ANALYSER ----------
-let audioCtx, analyser, micStream, dataArray;
-
-async function startMic() {
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    pollMic();
-    return true;
-  } catch (e) {
-    console.warn('Mic permission denied or unavailable:', e);
-    return false;
-  }
-}
-
-function pollMic() {
-  if (!analyser) return;
-  analyser.getByteFrequencyData(dataArray);
-  const avg = dataArray.reduce((a,b) => a+b, 0) / dataArray.length;
-  audioLevel = Math.min(avg / 90, 1);
-  requestAnimationFrame(pollMic);
-}
-
-function stopMic() {
-  if (micStream) micStream.getTracks().forEach(t => t.stop());
-  if (audioCtx) audioCtx.close();
-  analyser = null;
-  audioLevel = 0;
-}
-
-// ---------- CAPTION TYPEWRITER ----------
+// ---------- CAPTION ----------
 function showCaption(text, mode = 'normal') {
   const el = document.getElementById('caption');
   el.classList.toggle('briefing-mode', mode === 'briefing');
@@ -543,9 +598,6 @@ function hideCaption() {
 }
 
 // ---------- TTS PLAYBACK ----------
-// Calls /api/speak (Google Cloud TTS proxy). Falls back to no audio
-// (caption-only) if the endpoint isn't deployed yet — so this still
-// works as a visual demo before you wire up the backend.
 async function speak(text) {
   try {
     const res = await fetch('/api/speak', {
@@ -562,14 +614,12 @@ async function speak(text) {
       audio.play().catch(resolve);
     });
   } catch (e) {
-    // Visual-only fallback — caption still plays, just no voice.
-    // Roughly time the caption dwell to text length so demo still feels right.
     const dwell = Math.min(Math.max(text.length * 55, 1800), 9000);
     return new Promise((resolve) => setTimeout(resolve, dwell));
   }
 }
 
-// ---------- BRIEFING PANEL REVEAL ----------
+// ---------- PANEL REVEAL (used for general "show stats" answers) ----------
 function populatePanels() {
   document.getElementById('pv1').textContent = FAKE_STATS.followers.value;
   document.getElementById('pd1').textContent = FAKE_STATS.followers.delta;
@@ -580,7 +630,6 @@ function populatePanels() {
   document.getElementById('pv4').textContent = FAKE_STATS.reach.value;
   document.getElementById('pd4').textContent = FAKE_STATS.reach.delta;
 }
-
 function showPanels() {
   populatePanels();
   ['panel-1','panel-2','panel-3','panel-4'].forEach((id, i) => {
@@ -593,88 +642,189 @@ function hidePanels() {
   });
 }
 
-// ---------- MAIN INTERACTION FLOW ----------
-const triggerBtn = document.getElementById('triggerBtn');
+// ---------- MODE INDICATOR UI ----------
+const modeDot = document.getElementById('modeDot');
 const triggerLabel = document.getElementById('triggerLabel');
 const srStatus = document.getElementById('srStatus');
-let busy = false;
 
-async function runSequence() {
-  if (busy) return;
-  busy = true;
-
-  // 1. Listening state
-  currentMode = 'listening';
-  triggerBtn.classList.add('listening');
-  triggerLabel.textContent = 'LISTENING...';
-  srStatus.textContent = 'ECHO is listening';
-  setCoreColor(0xff3860);
-  const micOk = await startMic();
-  showCaption('...');
-
-  await new Promise(r => setTimeout(r, micOk ? 1400 : 900));
-  stopMic();
-
-  // 2. Greeting
-  currentMode = 'briefing';
-  triggerBtn.classList.remove('listening');
-  triggerLabel.textContent = 'PROCESSING';
-  setCoreColor(0x00e5ff);
-  showCaption(GREETING_LINE);
-  srStatus.textContent = 'ECHO is responding';
-  await speak(GREETING_LINE);
-
-  // 3. Pivot to business briefing — amber, panels fly in
-  await new Promise(r => setTimeout(r, 400));
-  setCoreColor(0xffb627);
-  triggerLabel.textContent = 'BRIEFING';
-  showCaption(BRIEFING_LINE, 'briefing');
-  showPanels();
-  await speak(BRIEFING_LINE);
-
-  // 4. Hold briefing on screen, then reset
-  await new Promise(r => setTimeout(r, 2600));
-  hidePanels();
-  hideCaption();
-  await new Promise(r => setTimeout(r, 500));
-  setCoreColor(0x00e5ff);
-  currentMode = 'idle';
-  triggerLabel.textContent = 'TAP TO ACTIVATE';
-  srStatus.textContent = 'ECHO is idle';
-  busy = false;
+function setUIMode(mode) {
+  modeDot.classList.remove('listening', 'thinking');
+  if (mode === 'listening') {
+    modeDot.classList.add('listening');
+    triggerLabel.textContent = 'LISTENING...';
+  } else if (mode === 'thinking') {
+    modeDot.classList.add('thinking');
+    triggerLabel.textContent = 'THINKING...';
+  } else if (mode === 'speaking') {
+    triggerLabel.textContent = 'SPEAKING';
+  } else {
+    triggerLabel.textContent = 'CLAP TO ACTIVATE';
+  }
 }
 
-triggerBtn.addEventListener('click', runSequence);
+// ---------- MIC PERMISSION GATE ----------
+let persistentStream = null;
+const enableOverlay = document.getElementById('enableOverlay');
+const enableBtn = document.getElementById('enableBtn');
 
-// Optional: clap/loud-sound trigger via passive mic listener (separate from
-// the interaction mic above). Uncomment to enable clap detection on load.
-/*
-(async function enableClapDetect() {
+enableBtn.addEventListener('click', async () => {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = ctx.createMediaStreamSource(stream);
-    const an = ctx.createAnalyser();
-    an.fftSize = 512;
-    src.connect(an);
-    const buf = new Uint8Array(an.frequencyBinCount);
-    let cooldown = false;
-    function loop() {
-      an.getByteFrequencyData(buf);
-      const peak = Math.max(...buf);
-      if (peak > 200 && !busy && !cooldown) {
-        cooldown = true;
-        runSequence();
-        setTimeout(() => cooldown = false, 4000);
-      }
-      requestAnimationFrame(loop);
-    }
-    loop();
-  } catch (e) { console.warn('Clap detect mic unavailable', e); }
-})();
-*/
+    persistentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    enableOverlay.classList.add('hidden');
+    startClapListener(persistentStream);
+  } catch (e) {
+    alert('Microphone access is required for ECHO to work. Please allow mic access and try again.');
+  }
+});
 
-// Keyboard accessibility: Enter/Space already handled natively by <button>
+// ---------- CLAP DETECTION (always-on background listener) ----------
+let clapAudioCtx, clapAnalyser, clapDataArray;
+let clapCooldown = false;
+let conversationBusy = false;
+
+function startClapListener(stream) {
+  clapAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = clapAudioCtx.createMediaStreamSource(stream);
+  clapAnalyser = clapAudioCtx.createAnalyser();
+  clapAnalyser.fftSize = 512;
+  source.connect(clapAnalyser);
+  clapDataArray = new Uint8Array(clapAnalyser.frequencyBinCount);
+  clapLoop();
+}
+
+function clapLoop() {
+  if (!clapAnalyser) return;
+  clapAnalyser.getByteFrequencyData(clapDataArray);
+  const peak = Math.max(...clapDataArray);
+  if (peak > 195 && !conversationBusy && !clapCooldown) {
+    clapCooldown = true;
+    runConversationTurn();
+    setTimeout(() => { clapCooldown = false; }, 4500);
+  }
+  requestAnimationFrame(clapLoop);
+}
+
+// ---------- RECORD QUESTION (after clap wake) ----------
+function recordQuestion(stream, durationMs = 3500) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    } catch (e) {
+      recorder = new MediaRecorder(stream);
+    }
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      resolve(base64);
+    };
+    recorder.start();
+    setTimeout(() => recorder.stop(), durationMs);
+  });
+}
+
+// ---------- TRANSCRIBE (Speech-to-Text) ----------
+async function transcribe(base64Audio) {
+  try {
+    const res = await fetch('/api/listen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audioContent: base64Audio,
+        encoding: 'WEBM_OPUS',
+        sampleRateHertz: 48000,
+      }),
+    });
+    if (!res.ok) throw new Error('STT endpoint not ready');
+    const data = await res.json();
+    return data.transcript || '';
+  } catch (e) {
+    console.warn('Transcription failed:', e);
+    return '';
+  }
+}
+
+// ---------- THINK (LLM brain) ----------
+async function think(question) {
+  try {
+    const res = await fetch('/api/think', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) throw new Error('Think endpoint not ready');
+    const data = await res.json();
+    return data.answer || 'ക്ഷമിക്കണം സർ, ഒന്ന്കൂടി വ്യക്തമാക്കാമോ?';
+  } catch (e) {
+    console.warn('Think failed:', e);
+    return 'ക്ഷമിക്കണം സർ, ഈ സമയത്ത് ഒരു പിശകു വന്നു.';
+  }
+}
+
+// ---------- FULL CONVERSATION TURN ----------
+async function runConversationTurn() {
+  if (conversationBusy || !persistentStream) return;
+  conversationBusy = true;
+
+  // 1. Listening
+  currentMode = 'listening';
+  setUIMode('listening');
+  setCoreColor(0xff3860);
+  srStatus.textContent = 'ECHO is listening';
+  showCaption('...');
+
+  const audioBase64 = await recordQuestion(persistentStream, 3500);
+
+  // 2. Thinking
+  currentMode = 'thinking';
+  setUIMode('thinking');
+  setCoreColor(0xffb627);
+  srStatus.textContent = 'ECHO is thinking';
+  showCaption('ഒരു നിമിഷം...');
+
+  const transcript = await transcribe(audioBase64);
+
+  let answer;
+  if (!transcript || transcript.trim().length === 0) {
+    answer = 'ക്ഷമിക്കണം സർ, എനിക്ക് കേൽകാനായില്ല. ഒന്നുകൂടി വ്യക്തമായി ചോദിക്കാമോ?';
+  } else {
+    answer = await think(transcript);
+  }
+
+  // 3. Speaking
+  currentMode = 'speaking';
+  setUIMode('speaking');
+  setCoreColor(0x00e5ff);
+  srStatus.textContent = 'ECHO is responding';
+  showCaption(answer, 'briefing');
+
+  // If the answer mentions stats-y keywords, flash the panel deck for visual flair
+  const statsKeywords = ['users', 'യൂസർ', 'revenue', 'വരുമാനം', 'follower', 'ഫോളോവർ', 'reach', 'റീച്'];
+  const showStatsPanel = statsKeywords.some(k => answer.toLowerCase().includes(k.toLowerCase()));
+  if (showStatsPanel) showPanels();
+
+  await speak(answer);
+
+  await new Promise(r => setTimeout(r, showStatsPanel ? 1800 : 600));
+  if (showStatsPanel) hidePanels();
+  hideCaption();
+
+  // 4. Reset to idle
+  setCoreColor(0x00e5ff);
+  currentMode = 'idle';
+  setUIMode('idle');
+  srStatus.textContent = 'ECHO is idle';
+  conversationBusy = false;
+}
+
+// Keyboard accessibility note: primary interaction is clap-based; the
+// ENABLE MICROPHONE button remains keyboard accessible for the one-time
+// permission grant.
 </script>
 
 </body>

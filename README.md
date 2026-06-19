@@ -1,52 +1,82 @@
-# ECHO — Neural Interface (Content Demo Build)
+# ECHO v2 — Conversational Neural Interface
 
-A JARVIS-style voice briefing HUD, speaking Malayalam, built for @BuildWithHaris content.
-**All stats shown (followers, revenue, users, reach) are fake/demo numbers** — edit them in
-`index.html` under `FAKE_STATS` and the `BRIEFING_LINE` string.
+Upgraded from the scripted demo to a **real clap-activated conversational AI**.
+You clap → ECHO listens → you ask anything about your Vectrasource tools →
+ECHO answers live in Malayalam.
 
-## What it does
+**All numbers ECHO knows are fake/demo stats** — see `api/think.js` to edit them.
 
-1. Idle state — wireframe icosahedron core pulses gently, cyan glow, ambient HUD readouts.
-2. Tap the activate button (bottom center) → mic listens (red pulse state, ~1.4s).
-3. ECHO greets you in Malayalam (cyan, calm).
-4. Pivots into **business briefing mode** — core shifts amber, four data panels fly in
-   around the HUD (Followers / Revenue / Active Users / Content Reach), and ECHO reads
-   out the numbers in Malayalam.
-5. Holds for a few seconds, then resets to idle.
+## How it works now
 
-Works as a **visual-only demo with no backend** (captions still play, just silent) — so you
-can record footage immediately. Wire up the API route below for real Malayalam voice.
+1. On page load, a one-time **"Enable Microphone"** overlay appears (browsers
+   require a user click before granting persistent mic access — this is the
+   only button in the whole experience).
+2. After that, ECHO runs **fully hands-free**: it passively listens for a
+   loud clap in the background.
+3. **Clap detected** → red pulse "listening" state → records ~3.5 seconds of
+   your spoken question.
+4. Audio is sent to **Google Cloud Speech-to-Text** (`/api/listen`) → Malayalam
+   transcript.
+5. Transcript is sent to **OpenRouter (Claude Haiku)** (`/api/think`) with a
+   system prompt that knows fake stats for all 4 Vectrasource tools (Vakeel AI,
+   VlogSource, TaxDraft AI, TutorAI) — generates a short Malayalam answer,
+   JARVIS-style ("സർ" address, confident tone).
+6. Answer is sent to **Google Cloud TTS** (`/api/speak`, same as before) and
+   spoken aloud, with the caption shown on screen.
+7. If the answer mentions stats-related words, the four data panels flash up
+   briefly for visual punch — otherwise it's just the spoken answer.
+8. Resets to idle, waiting for the next clap.
 
-## Deploy to Vercel (same pattern as Jarvis Booth)
+## New files
 
-1. Create a new folder / repo, drop in:
-   - `index.html` (root)
-   - `api/speak.js`
-2. Push to GitHub → import into Vercel (or `vercel --prod` from the folder).
-3. In Vercel project settings → **Environment Variables**, add:
-   - `GOOGLE_TTS_API_KEY` = your Google Cloud Text-to-Speech API key
-     (same one used for Jarvis Booth's `ml-IN-Wavenet-D` voice)
-4. Redeploy after adding the env var.
-5. Visit your deployed URL on a device with mic permission allowed — tap the core to trigger.
+- `api/listen.js` — Speech-to-Text proxy (Google Cloud)
+- `api/think.js` — LLM brain proxy (OpenRouter) + ECHO's fake knowledge base
+- `index.html` — updated: removed tap button, added mic-enable gate, clap
+  detector, and the full record → transcribe → think → speak loop
 
-## Customizing for different takes/videos
+## Environment variables required (Vercel project settings)
 
-- **Numbers**: edit `FAKE_STATS` object near the top of the `<script>` in `index.html`.
-- **Spoken lines**: edit `GREETING_LINE` and `BRIEFING_LINE` — keep them in Malayalam Unicode
-  (not Manglish) for correct `ml-IN-Wavenet-D` pronunciation.
-- **Voice pacing**: tweak `prosody rate` / `pitch` in `api/speak.js` SSML wrapper, or
-  `speakingRate` / `pitch` in the `audioConfig`.
-- **Clap-trigger instead of tap**: there's a commented-out `enableClapDetect()` block at the
-  bottom of the script — uncomment it to make ECHO respond to a loud clap instead of/alongside
-  the button. Useful for the "I clap and Jarvis responds" demo moment you described.
-- **Colors**: CSS custom properties at the top (`--core-cyan`, `--amber`, etc.) control the
-  whole palette — cyan = idle/listening-adjacent, amber = briefing mode.
+| Variable | Used by | Notes |
+|---|---|---|
+| `GOOGLE_TTS_API_KEY` | `speak.js`, `listen.js` | Same key powers both TTS and STT, as long as both APIs are enabled on that Google Cloud project (Cloud Console → APIs & Services → enable "Cloud Speech-to-Text API" alongside the existing "Cloud Text-to-Speech API") |
+| `OPENROUTER_API_KEY` | `think.js` | Same key used across Vakeel AI / VlogSource / TaxDraft AI / TutorAI |
+
+After adding/changing env vars, **redeploy** in Vercel for them to take effect.
+
+## Editing what ECHO knows
+
+Open `api/think.js` and edit the `SYSTEM_PROMPT` string — it's plain Malayalam
+text with fake stats per tool (users, revenue, top feature, growth %). Add,
+remove, or change numbers freely; nothing here touches real data.
+
+## Tuning the clap sensitivity
+
+In `index.html`, inside `clapLoop()`:
+
+```js
+if (peak > 195 && !conversationBusy && !clapCooldown) {
+```
+
+- Lower `195` if claps aren't being detected (more sensitive, but may
+  false-trigger on loud ambient noise).
+- Raise it if it's triggering too easily.
+
+Recording duration after a clap (how long ECHO listens for your question)
+is set here:
+
+```js
+const audioBase64 = await recordQuestion(persistentStream, 3500);
+```
+
+`3500` = 3.5 seconds. Increase if you tend to ask longer questions.
 
 ## Notes
 
-- Mic access requires HTTPS (Vercel gives you this by default) — won't work on plain `http://`.
-- Browser will prompt for mic permission on first tap; make sure to allow it before recording.
-- If `GOOGLE_TTS_API_KEY` isn't set, the demo still runs — it just skips audio and times the
-  caption display instead, so you can test the visual flow before the backend is wired up.
-- Same TTS pattern/voice as your Jarvis Booth build (`ml-IN-Wavenet-D`, SSML pacing) for
-  consistent brand voice across your content.
+- Mic access requires HTTPS — works fine on your Vercel deployment, won't
+  work on plain `http://`.
+- The mic-enable overlay only needs to be dismissed once per page load/session.
+- If `OPENROUTER_API_KEY` or `GOOGLE_TTS_API_KEY` aren't set, the relevant
+  step fails gracefully — ECHO will give a fallback Malayalam apology line
+  instead of crashing.
+- Same deployment pattern as your other tools: push to GitHub → Vercel
+  auto-deploys.
