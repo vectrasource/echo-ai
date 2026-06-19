@@ -40,10 +40,13 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           config: {
             encoding: encoding || "WEBM_OPUS",
-            sampleRateHertz: sampleRateHertz || 48000,
+            // sampleRateHertz must NOT be set for WEBM_OPUS — it's embedded
+            // in the container and Google STT rejects explicit values for it,
+            // returning empty results (which causes the "couldn't hear" fallback).
+            ...(encoding && encoding !== "WEBM_OPUS" ? { sampleRateHertz } : {}),
             languageCode: "ml-IN",
             alternativeLanguageCodes: ["en-IN"],
-            model: "default",
+            enableAutomaticPunctuation: true,
           },
           audio: { content: audioContent },
         }),
