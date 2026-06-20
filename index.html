@@ -696,7 +696,11 @@ function clapLoop() {
   if (!clapAnalyser) return;
   clapAnalyser.getByteFrequencyData(clapDataArray);
   const peak = Math.max(...clapDataArray);
-  if (peak > 160 && !conversationBusy && !clapCooldown) {
+  // Show live peak level on the trigger label for debugging
+  if (currentMode === 'idle') {
+    triggerLabel.textContent = 'TAP OR CLAP  [' + peak + ']';
+  }
+  if (peak > 140 && !conversationBusy && !clapCooldown) {
     clapCooldown = true;
     runConversationTurn();
     setTimeout(() => { clapCooldown = false; }, 4500);
@@ -822,9 +826,13 @@ async function runConversationTurn() {
   conversationBusy = false;
 }
 
-// Keyboard accessibility note: primary interaction is clap-based; the
-// ENABLE MICROPHONE button remains keyboard accessible for the one-time
-// permission grant.
+// Click the mic button to trigger a conversation turn manually
+modeDot.addEventListener('click', () => {
+  if (!persistentStream || conversationBusy) return;
+  clapCooldown = true;
+  runConversationTurn();
+  setTimeout(() => { clapCooldown = false; }, 4500);
+});
 </script>
 
 </body>
