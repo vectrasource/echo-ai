@@ -696,7 +696,7 @@ function clapLoop() {
   if (!clapAnalyser) return;
   clapAnalyser.getByteFrequencyData(clapDataArray);
   const peak = Math.max(...clapDataArray);
-  if (peak > 195 && !conversationBusy && !clapCooldown) {
+  if (peak > 160 && !conversationBusy && !clapCooldown) {
     clapCooldown = true;
     runConversationTurn();
     setTimeout(() => { clapCooldown = false; }, 4500);
