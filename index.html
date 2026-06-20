@@ -771,68 +771,86 @@ async function think(question) {
   }
 }
 
-// ---------- FULL CONVERSATION TURN ----------
-async function runConversationTurn() {
-  if (conversationBusy || !persistentStream) return;
-  conversationBusy = true;
+// ---------- CONVERSATION SESSION ----------
+let sessionActive = false;
 
-  // 1. Listening
-  currentMode = 'listening';
-  setUIMode('listening');
-  setCoreColor(0xff3860);
-  srStatus.textContent = 'ECHO is listening';
-  showCaption('...');
-
-  const audioBase64 = await recordQuestion(persistentStream, 3500);
-
-  // 2. Thinking
-  currentMode = 'thinking';
-  setUIMode('thinking');
-  setCoreColor(0xffb627);
-  srStatus.textContent = 'ECHO is thinking';
-  showCaption('ഒരു നിമിഷം...');
-
-  const transcript = await transcribe(audioBase64);
-
-  let answer;
-  if (!transcript || transcript.trim().length === 0) {
-    answer = 'ക്ഷമിക്കണം സർ, എനിക്ക് കേൽകാനായില്ല. ഒന്നുകൂടി വ്യക്തമായി ചോദിക്കാമോ?';
-  } else {
-    answer = await think(transcript);
-  }
-
-  // 3. Speaking
-  currentMode = 'speaking';
-  setUIMode('speaking');
-  setCoreColor(0x00e5ff);
-  srStatus.textContent = 'ECHO is responding';
-  showCaption(answer, 'briefing');
-
-  // If the answer mentions stats-y keywords, flash the panel deck for visual flair
-  const statsKeywords = ['users', 'യൂസർ', 'revenue', 'വരുമാനം', 'follower', 'ഫോളോവർ', 'reach', 'റീച്'];
-  const showStatsPanel = statsKeywords.some(k => answer.toLowerCase().includes(k.toLowerCase()));
-  if (showStatsPanel) showPanels();
-
-  await speak(answer);
-
-  await new Promise(r => setTimeout(r, showStatsPanel ? 1800 : 600));
-  if (showStatsPanel) hidePanels();
-  hideCaption();
-
-  // 4. Reset to idle
+function endSession() {
+  sessionActive = false;
+  conversationBusy = false;
   setCoreColor(0x00e5ff);
   currentMode = 'idle';
   setUIMode('idle');
   srStatus.textContent = 'ECHO is idle';
-  conversationBusy = false;
+  hideCaption();
 }
 
-// Click the mic button to trigger a conversation turn manually
+// ---------- FULL CONVERSATION TURN ----------
+async function runConversationTurn() {
+  if (conversationBusy || !persistentStream) return;
+  conversationBusy = true;
+  sessionActive = true;
+
+  while (sessionActive) {
+    // 1. Listening
+    currentMode = 'listening';
+    setUIMode('listening');
+    setCoreColor(0xff3860);
+    srStatus.textContent = 'ECHO is listening';
+    showCaption('...');
+
+    const audioBase64 = await recordQuestion(persistentStream, 4000);
+
+    // 2. Thinking
+    currentMode = 'thinking';
+    setUIMode('thinking');
+    setCoreColor(0xffb627);
+    srStatus.textContent = 'ECHO is thinking';
+    showCaption('ഒരു നിമിഷം...');
+
+    const transcript = await transcribe(audioBase64);
+
+    let answer;
+    if (!transcript || transcript.trim().length === 0) {
+      // After 2 silent turns, go back to idle
+      answer = 'ക്ഷമിക്കണം സർ, എനിക്ക് കേൽകാനായില്ല. ഒന്നുകൂടി വ്യക്തമായി ചോദിക്കാമോ?';
+    } else {
+      answer = await think(transcript);
+    }
+
+    // 3. Speaking
+    currentMode = 'speaking';
+    setUIMode('speaking');
+    setCoreColor(0x00e5ff);
+    srStatus.textContent = 'ECHO is responding';
+    showCaption(answer, 'briefing');
+
+    const statsKeywords = ['users', 'യൂസർ', 'revenue', 'വരുമാനം', 'follower', 'ഫോളോവർ', 'reach', 'റീച്'];
+    const showStatsPanel = statsKeywords.some(k => answer.toLowerCase().includes(k.toLowerCase()));
+    if (showStatsPanel) showPanels();
+
+    await speak(answer);
+
+    await new Promise(r => setTimeout(r, showStatsPanel ? 1800 : 500));
+    if (showStatsPanel) hidePanels();
+    hideCaption();
+
+    if (!sessionActive) break;
+    // Brief pause before listening again
+    await new Promise(r => setTimeout(r, 600));
+  }
+
+  endSession();
+}
+
+// Click mic button: start session if idle, stop session if active
 modeDot.addEventListener('click', () => {
-  if (!persistentStream || conversationBusy) return;
-  clapCooldown = true;
+  if (!persistentStream) return;
+  if (sessionActive) {
+    sessionActive = false; // stops the loop after current turn
+    return;
+  }
+  if (conversationBusy) return;
   runConversationTurn();
-  setTimeout(() => { clapCooldown = false; }, 4500);
 });
 </script>
 
